@@ -1,0 +1,50 @@
+name: GTFS Daily Data Pipeline
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # Runs daily at 03:00 HKT (19:00 UTC)
+  workflow_dispatch: # Enables manual trigger button in GitHub UI
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Scraper Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Scrape & Generate GTFS
+        run: python main.py
+
+      - name: Compile GTFS-Dense
+        # Compiles the raw GTFS output into the hyper-optimized binary format
+        run: ./compiler/gtfs-dense-compiler output.zip public/mct-graph.dense
+
+      - name: Fetch Latest HK PMTiles Map Data
+        # Pulls pre-compiled vector map directly from community releases
+        run: |
+          wget https://github.com/wheelstransit/hk-pmtiles-generation/releases/latest/download/hongkong.pmtiles -O public/hongkong.pmtiles
+
+      - name: Generate Security Headers
+        # Enforces Cross-Origin Isolation for WASM multithreading on Cloudflare
+        run: |
+          echo "/*" > public/_headers
+          echo "  Cross-Origin-Embedder-Policy: require-corp" >> public/_headers
+          echo "  Cross-Origin-Opener-Policy: same-origin" >> public/_headers
+          echo "  Access-Control-Allow-Origin: *" >> public/_headers
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: 'hk-routing-data'
+          directory: 'public'
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
