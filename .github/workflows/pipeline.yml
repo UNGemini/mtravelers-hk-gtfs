@@ -1,8 +1,11 @@
-name: GTFS Daily Data Pipeline
+name: GTFS Data Pipeline
 
 on:
   schedule:
-    - cron: '0 19 * * *' # Runs daily at 03:00 HKT (19:00 UTC)
+    # Option 1: Weekly run on Sundays at 03:00 HKT (19:00 UTC Saturday)
+    - cron: '0 19 * * 0'
+    # Option 2: Keep daily run if you want (caching will prevent full re-downloads)
+    # - cron: '0 19 * * *'
   workflow_dispatch: # Enables manual trigger button in GitHub UI
 
 jobs:
@@ -19,6 +22,17 @@ jobs:
 
       - name: Install Scraper Dependencies
         run: pip install -r requirements.txt
+
+      # ==========================================
+      # ADDED: Cache the .cache directory across runs
+      # ==========================================
+      - name: Cache GTFS Raw Data
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: mct-gtfs-cache-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            mct-gtfs-cache-${{ runner.os }}-
 
       - name: Scrape & Generate GTFS
         run: python main.py
@@ -47,6 +61,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: 'hk-routing-data'
-          directory: 'public'
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          projectName: hk-routing-data
+          directory: public
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
