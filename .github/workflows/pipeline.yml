@@ -73,7 +73,6 @@ jobs:
           key: mtravelers-gtfs-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
             mtravelers-gtfs-cache-${{ runner.os }}-
-            mct-gtfs-cache-${{ runner.os }}-
           save-always: true
 
       - name: Scrape & Generate GTFS
