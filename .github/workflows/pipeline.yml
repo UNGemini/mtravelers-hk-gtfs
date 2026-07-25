@@ -60,20 +60,22 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # Persist partial .cache even if main.py fails mid-run so the next
-      # workflow can resume downloads instead of starting from scratch.
-      - name: Cache mtravelers data
-        uses: actions/cache@v4
+      # Decoupled restore/save: save-always on actions/cache@v4 is deprecated
+      # and does not persist on job failure. restore + save with if: always()
+      # keeps partial .cache / waypoints after mid-run crashes (gov rate limits).
+      - name: Restore mtravelers data cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: |
             .cache
             waypoints
-          # Stable key: do not hash source files, or every code fix busts the
-          # partial download cache that main.py relies on for resume.
-          key: mtravelers-gtfs-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          # Unique primary key per run/attempt so cache/save never collides with
+          # an existing key (save fails if the key already exists).
+          key: mtravelers-gtfs-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            mtravelers-gtfs-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-
             mtravelers-gtfs-cache-${{ runner.os }}-
-          save-always: true
 
       - name: Scrape & Generate GTFS
         run: python main.py
@@ -124,6 +126,7 @@ jobs:
           name: hk.gtfs.zip
           path: output/hk.gtfs.zip
           retention-days: 90
+          if-no-files-found: warn
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
@@ -133,3 +136,14 @@ jobs:
           projectName: hk-routing-data
           directory: public
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      # Always last: upload whatever main.py managed to download before failing.
+      - name: Save mtravelers data cache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache
+            waypoints
+          key: mtravelers-gtfs-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}-${{ github.run_id }}-${{ github.run_attempt }}
