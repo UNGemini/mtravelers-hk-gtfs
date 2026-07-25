@@ -54,6 +54,15 @@ def generate_stop_times_for_agency_optimized(
         pattern_key_cols = ['unique_route_id']
     elif agency_id == 'GMB':
         pattern_key_cols = ['route_code', 'route_seq', 'region']  # add region
+        # Normalize types so pattern keys match trip-row lookups.
+        if 'route_seq' in agency_stoptimes_df.columns:
+            agency_stoptimes_df['route_seq'] = pd.to_numeric(
+                agency_stoptimes_df['route_seq'], errors='coerce'
+            ).astype('Int64')
+        if 'route_code' in agency_stoptimes_df.columns:
+            agency_stoptimes_df['route_code'] = agency_stoptimes_df['route_code'].astype(str)
+        if 'region' in agency_stoptimes_df.columns:
+            agency_stoptimes_df['region'] = agency_stoptimes_df['region'].astype(str)
     elif agency_id == 'MTRB':
         pattern_key_cols = ['route_id', 'direction']
     elif agency_id == 'NLB':
@@ -69,9 +78,9 @@ def generate_stop_times_for_agency_optimized(
          return pd.DataFrame(columns=['trip_id', 'arrival_time', 'departure_time', 'stop_id', 'stop_sequence'])
 
     if len(valid_pattern_key_cols) == 1:
-        grouped_stops = agency_stoptimes_df.sort_values(stop_seq_col).groupby(valid_pattern_key_cols[0])
+        grouped_stops = agency_stoptimes_df.sort_values(stop_seq_col).groupby(valid_pattern_key_cols[0], dropna=False)
     else:
-        grouped_stops = agency_stoptimes_df.sort_values(stop_seq_col).groupby(valid_pattern_key_cols)
+        grouped_stops = agency_stoptimes_df.sort_values(stop_seq_col).groupby(valid_pattern_key_cols, dropna=False)
 
     for name, group in tqdm(grouped_stops, desc=f"analyzing {agency_id} trip patterns", disable=silent):
         stops = group['stop_id'].tolist()
@@ -104,7 +113,17 @@ def generate_stop_times_for_agency_optimized(
                 time = default_journey_time_secs
             journey_times_sec.append(time)
 
-        trip_patterns[name] = {
+        # Normalize multi-key group names (esp. GMB route_seq) for consistent lookups.
+        pattern_name = name
+        if agency_id == 'GMB' and isinstance(name, tuple) and len(name) == 3:
+            route_code, route_seq, region = name
+            try:
+                route_seq = int(route_seq) if pd.notna(route_seq) else 1
+            except (TypeError, ValueError):
+                route_seq = 1
+            pattern_name = (str(route_code), route_seq, str(region))
+
+        trip_patterns[pattern_name] = {
             'stop_ids': np.array(stops),
             'sequences': np.array(sequences),
             'cumulative_offsets_sec': np.cumsum(journey_times_sec)
@@ -112,13 +131,55 @@ def generate_stop_times_for_agency_optimized(
 
     all_stop_times = []
 
-    for trip_row in tqdm(agency_trips_df.itertuples(), total=agency_trips_df.shape[0], desc=f"generating {agency_id} stop times", disable=silent):
+    def _gmb_pattern_key(trip_row):
+        """Build GMB pattern key (route_code, route_seq, region), recovering missing fields."""
+        route_code = getattr(trip_row, 'route_code', None)
+        region = getattr(trip_row, 'region', None)
+        route_seq = getattr(trip_row, 'route_seq', None)
+
+        if region is None or route_code is None or (isinstance(route_code, float) and pd.isna(route_code)):
+            rsn = getattr(trip_row, 'route_short_name', None)
+            if not rsn:
+                rid = getattr(trip_row, 'route_id', None)
+                if rid is not None:
+                    rsn = str(rid).removeprefix('GMB-')
+            if rsn:
+                parts = str(rsn).split('-', 1)
+                if region is None and parts:
+                    region = parts[0]
+                if (route_code is None or (isinstance(route_code, float) and pd.isna(route_code))) and len(parts) > 1:
+                    route_code = parts[1]
+
+        if route_seq is None or (isinstance(route_seq, float) and pd.isna(route_seq)):
+            # Prefer direction_id (0->1, 1->2); else try to parse trailing trip_id segment.
+            direction_id = getattr(trip_row, 'direction_id', None)
+            if direction_id is not None and pd.notna(direction_id):
+                try:
+                    route_seq = int(direction_id) + 1
+                except (TypeError, ValueError):
+                    route_seq = None
+            if route_seq is None or (isinstance(route_seq, float) and pd.isna(route_seq)):
+                trip_id = getattr(trip_row, 'trip_id', '')
+                tail = str(trip_id).rsplit('-', 1)[-1]
+                try:
+                    route_seq = int(tail)
+                except (TypeError, ValueError):
+                    route_seq = 1
+
+        try:
+            route_seq = int(route_seq)
+        except (TypeError, ValueError):
+            route_seq = 1
+
+        return (str(route_code) if route_code is not None else None, route_seq, str(region) if region is not None else None)
+
+    for trip_row in tqdm(agency_trips_df.itertuples(index=False), total=agency_trips_df.shape[0], desc=f"generating {agency_id} stop times", disable=silent):
         if agency_id == 'KMB':
             pattern_lookup_key = (trip_row.route_short_name, trip_row.bound, trip_row.service_type)
         elif agency_id == 'CTB':
             pattern_lookup_key = trip_row.unique_route_id
         elif agency_id == 'GMB':
-            pattern_lookup_key = (trip_row.route_code, trip_row.route_seq, trip_row.region)  # include region
+            pattern_lookup_key = _gmb_pattern_key(trip_row)
         elif agency_id == 'MTRB':
             direction_str = 'O' if trip_row.direction_id == 0 else 'I'
             pattern_lookup_key = (trip_row.route_short_name, direction_str)

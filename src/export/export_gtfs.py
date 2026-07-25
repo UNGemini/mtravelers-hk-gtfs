@@ -1998,10 +1998,27 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
         gmb_trips_source['direction_id'] = gmb_trips_source['route_seq'] - 1
         gmb_trips_source['service_id'] = 'GMB_DEFAULT_SERVICE'
         gmb_trips_source['trip_id'] = gmb_trips_source['route_id'] + '-' + gmb_trips_source['route_seq'].astype(str)
-        gmb_trips_df = gmb_trips_source[['route_id', 'service_id', 'trip_id', 'direction_id', 'route_seq', 'route_code', 'orig_en', 'dest_en', 'agency_id']].copy()
+        # Keep region: stop_times generation keys GMB patterns by (route_code, route_seq, region).
+        gmb_trips_df = gmb_trips_source[
+            ['route_id', 'service_id', 'trip_id', 'direction_id', 'route_seq', 'route_code', 'region', 'orig_en', 'dest_en', 'agency_id']
+        ].copy()
         gmb_trips_df.rename(columns={'orig_en': 'origin_en', 'dest_en': 'destination_en'}, inplace=True)
         gmb_trips_df['original_service_id'] = 'GMB_DEFAULT_SERVICE'
-        gmb_trips_df['route_short_name'] = gmb_trips_df['route_id'].str.replace('GMB-', '')
+        gmb_trips_df['route_short_name'] = gmb_trips_df['route_id'].str.replace('GMB-', '', n=1)
+
+    # Ensure region is always present for GMB stop_times pattern lookup.
+    if 'region' not in gmb_trips_df.columns:
+        if 'route_short_name' in gmb_trips_df.columns:
+            gmb_trips_df['region'] = gmb_trips_df['route_short_name'].astype(str).str.split('-', n=1).str[0]
+        elif 'route_id' in gmb_trips_df.columns:
+            gmb_trips_df['region'] = gmb_trips_df['route_id'].astype(str).str.replace('GMB-', '', n=1).str.split('-', n=1).str[0]
+        else:
+            gmb_trips_df['region'] = None
+    if 'route_code' not in gmb_trips_df.columns:
+        if 'route_short_name' in gmb_trips_df.columns:
+            gmb_trips_df['route_code'] = gmb_trips_df['route_short_name'].astype(str).str.split('-', n=1).str[1]
+        elif 'route_id' in gmb_trips_df.columns:
+            gmb_trips_df['route_code'] = gmb_trips_df['route_id'].astype(str).str.replace('GMB-', '', n=1).str.split('-', n=1).str[1]
 
     gmb_trips_df.drop_duplicates(subset=['trip_id'], keep='first', inplace=True)
 
