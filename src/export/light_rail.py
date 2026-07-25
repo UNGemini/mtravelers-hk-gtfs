@@ -9,17 +9,16 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import quote
 
 import httpx
 import pandas as pd
-from pyproj import Transformer
 
 from lightrail_legacy.parse_schedule import (
     SCHEDULE_URL,
     fetch_light_rail_schedule_html,
     parse_light_rail_schedule,
 )
+from src.common.light_rail_coords import load_light_rail_stop_coords
 
 CIRCULAR_ROUTES = {"705", "706"}
 DEFAULT_FREQUENCIES = (
@@ -27,11 +26,6 @@ DEFAULT_FREQUENCIES = (
 )
 FALLBACK_SECONDS_PER_STOP = 180
 LIGHT_RAIL_ROUTES_AND_STOPS_URL = "https://opendata.mtr.com.hk/data/light_rail_routes_and_stops.csv"
-GEODATA_BASE_URLS = (
-    "https://geodata.gov.hk/gs/api/v1.0.0/locationSearch?q=",
-    "https://www.map.gov.hk/gs/api/v1.0.0/locationSearch?q=",
-)
-LIGHT_RAIL_STOP_SUFFIX = "\u8f15\u9435\u7ad9"
 ROUTE_COLORS = {
     "505": "DA2128",
     "507": "00A54F",
@@ -130,16 +124,20 @@ def _load_schedule_data(schedule_path: Optional[str], silent: bool = False) -> D
 
 
 async def _fetch_route_and_stop_data(silent: bool = False) -> Tuple[Dict[str, Dict], Dict[str, Dict]]:
+    """Build LR route sequences from MTR CSV; coords from bundled/cache only.
+
+    Live map.gov.hk / geodata.gov.hk geocoding is skipped (403 on CI).
+    """
     route_list: Dict[str, Dict] = {}
     stop_list: Dict[str, Dict] = {}
-    transformer = Transformer.from_crs("epsg:2326", "epsg:4326", always_xy=True)
+    coords = load_light_rail_stop_coords()
 
     timeout = httpx.Timeout(30.0, pool=None)
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             response = await client.get(LIGHT_RAIL_ROUTES_AND_STOPS_URL)
             response.raise_for_status()
-        except httpx.RequestError as exc:
+        except (httpx.RequestError, httpx.HTTPStatusError) as exc:
             logging.error("Could not fetch Light Rail route data: %s", exc)
             return {}, {}
 
@@ -174,44 +172,31 @@ async def _fetch_route_and_stop_data(silent: bool = False) -> Tuple[Dict[str, Di
                     route_list[key]["stops"].append(light_rail_id)
 
             if light_rail_id not in stop_list:
-                stop_record = {
+                rec = coords.get(light_rail_id, {})
+                lat, lon = rec.get("lat"), rec.get("lon")
+                try:
+                    stop_lat = float(lat) if lat is not None else None
+                    stop_lon = float(lon) if lon is not None else None
+                except (TypeError, ValueError):
+                    stop_lat, stop_lon = None, None
+                stop_list[light_rail_id] = {
                     "stop_id": light_rail_id,
                     "stop_name": stop_name_en,
                     "stop_name_tc": stop_name_tc,
-                    "stop_lat": None,
-                    "stop_lon": None,
+                    "stop_lat": stop_lat,
+                    "stop_lon": stop_lon,
                 }
-                stop_list[light_rail_id] = stop_record
-                encoded_query = quote(f"{stop_name_tc}{LIGHT_RAIL_STOP_SUFFIX}")
-                last_exc: Optional[Exception] = None
-                for base_url in GEODATA_BASE_URLS:
-                    try:
-                        geo_url = f"{base_url}{encoded_query}"
-                        geo_response = await client.get(geo_url, headers={"Accept": "application/json"})
-                        if geo_response.status_code in (429, 503):
-                            last_exc = httpx.HTTPStatusError(
-                                f"HTTP {geo_response.status_code}",
-                                request=geo_response.request,
-                                response=geo_response,
-                            )
-                            continue
-                        geo_response.raise_for_status()
-                        data = geo_response.json()
-                        if isinstance(data, list) and data:
-                            lon, lat = transformer.transform(data[0]["x"], data[0]["y"])
-                            stop_record["stop_lat"] = lat
-                            stop_record["stop_lon"] = lon
-                            last_exc = None
-                            break
-                        elif not silent:
-                            logging.warning("No geodata result for Light Rail stop %s", stop_name_tc)
-                            last_exc = None
-                            break
-                    except (httpx.HTTPError, httpx.RequestError, KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
-                        last_exc = exc
-                        continue
-                if last_exc is not None and not silent:
-                    logging.warning("Failed to fetch geodata for Light Rail stop %s: %s", stop_name_tc, last_exc)
+
+    if not silent:
+        with_coords = sum(
+            1 for s in stop_list.values()
+            if s.get("stop_lat") is not None and s.get("stop_lon") is not None
+        )
+        logging.info(
+            "Light Rail stops: %s total, %s with bundled/cache coordinates (no live geodata).",
+            len(stop_list),
+            with_coords,
+        )
 
     return route_list, stop_list
 

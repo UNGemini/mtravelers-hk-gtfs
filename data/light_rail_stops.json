@@ -1,0 +1,478 @@
+{
+  "LR920": {
+    "stop_id": "LR920",
+    "name_en": "Sam Shing",
+    "name_tc": "三聖",
+    "lat": 22.382896795406026,
+    "lon": 113.97686052783952
+  },
+  "LR265": {
+    "stop_id": "LR265",
+    "name_en": "Siu Lun",
+    "name_tc": "兆麟",
+    "lat": 22.384556207008636,
+    "lon": 113.97509085617811
+  },
+  "LR270": {
+    "stop_id": "LR270",
+    "name_en": "On Ting",
+    "name_tc": "安定",
+    "lat": 22.38764460124205,
+    "lon": 113.97506698115072
+  },
+  "LR280": {
+    "stop_id": "LR280",
+    "name_en": "Town Centre",
+    "name_tc": "市中心",
+    "lat": 22.39136493240259,
+    "lon": 113.97488681815807
+  },
+  "LR295": {
+    "stop_id": "LR295",
+    "name_en": "Tuen Mun",
+    "name_tc": "屯門",
+    "lat": 22.393719909218927,
+    "lon": 113.97331022348197
+  },
+  "LR60": {
+    "stop_id": "LR60",
+    "name_en": "Kin On",
+    "name_tc": "建安",
+    "lat": 22.395132081352006,
+    "lon": 113.96889929640191
+  },
+  "LR190": {
+    "stop_id": "LR190",
+    "name_en": "Shan King (South)",
+    "name_tc": "山景(南)",
+    "lat": 22.39661833280288,
+    "lon": 113.96598370437316
+  },
+  "LR180": {
+    "stop_id": "LR180",
+    "name_en": "Shan King (North)",
+    "name_tc": "山景(北)",
+    "lat": 22.39850653043918,
+    "lon": 113.96662180953399
+  },
+  "LR170": {
+    "stop_id": "LR170",
+    "name_en": "Shek Pai",
+    "name_tc": "石排",
+    "lat": 22.40137959681907,
+    "lon": 113.96768576581157
+  },
+  "LR160": {
+    "stop_id": "LR160",
+    "name_en": "San Wai",
+    "name_tc": "新圍",
+    "lat": 22.40529455274496,
+    "lon": 113.96441671780676
+  },
+  "LR150": {
+    "stop_id": "LR150",
+    "name_en": "Leung King",
+    "name_tc": "良景",
+    "lat": 22.406693234492653,
+    "lon": 113.96362792229336
+  },
+  "LR140": {
+    "stop_id": "LR140",
+    "name_en": "Tin King",
+    "name_tc": "田景",
+    "lat": 22.407708320879895,
+    "lon": 113.96643315389974
+  },
+  "LR130": {
+    "stop_id": "LR130",
+    "name_en": "Kin Sang",
+    "name_tc": "建生",
+    "lat": 22.406727557583594,
+    "lon": 113.96918311952335
+  },
+  "LR120": {
+    "stop_id": "LR120",
+    "name_en": "Ching Chung",
+    "name_tc": "青松",
+    "lat": 22.40729170203414,
+    "lon": 113.97252321479111
+  },
+  "LR110": {
+    "stop_id": "LR110",
+    "name_en": "Kei Lun",
+    "name_tc": "麒麟",
+    "lat": 22.410971881808713,
+    "lon": 113.9763444696159
+  },
+  "LR100": {
+    "stop_id": "LR100",
+    "name_en": "Siu Hong",
+    "name_tc": "兆康",
+    "lat": 22.41190433120531,
+    "lon": 113.97821761311921
+  },
+  "LR200": {
+    "stop_id": "LR200",
+    "name_en": "Ming Kum",
+    "name_tc": "鳴琴",
+    "lat": 22.397062591791766,
+    "lon": 113.9673426169251
+  },
+  "LR1": {
+    "stop_id": "LR1",
+    "name_en": "Tuen Mun Ferry Pier",
+    "name_tc": "屯門碼頭",
+    "lat": 22.372707100981273,
+    "lon": 113.96711692315985
+  },
+  "LR240": {
+    "stop_id": "LR240",
+    "name_en": "Siu Hei",
+    "name_tc": "兆禧",
+    "lat": 22.37524438670133,
+    "lon": 113.9668995065111
+  },
+  "LR250": {
+    "stop_id": "LR250",
+    "name_en": "Hoi Wong Road",
+    "name_tc": "海皇路",
+    "lat": 22.384413335585286,
+    "lon": 113.97063446710929
+  },
+  "LR260": {
+    "stop_id": "LR260",
+    "name_en": "Goodview Garden",
+    "name_tc": "豐景園",
+    "lat": 22.383271239505035,
+    "lon": 113.97298556320035
+  },
+  "LR70": {
+    "stop_id": "LR70",
+    "name_en": "Ho Tin",
+    "name_tc": "河田",
+    "lat": 22.397377022083642,
+    "lon": 113.97313009664191
+  },
+  "LR75": {
+    "stop_id": "LR75",
+    "name_en": "Choy Yee Bridge",
+    "name_tc": "蔡意橋",
+    "lat": 22.399933944815597,
+    "lon": 113.97416550232074
+  },
+  "LR230": {
+    "stop_id": "LR230",
+    "name_en": "Ngan Wai",
+    "name_tc": "銀圍",
+    "lat": 22.40239107694297,
+    "lon": 113.97484175740118
+  },
+  "LR220": {
+    "stop_id": "LR220",
+    "name_en": "Tai Hing (South)",
+    "name_tc": "大興(南)",
+    "lat": 22.402667403496608,
+    "lon": 113.97196669614841
+  },
+  "LR212": {
+    "stop_id": "LR212",
+    "name_en": "Tai Hing (North)",
+    "name_tc": "大興(北)",
+    "lat": 22.404597395139458,
+    "lon": 113.96998265429546
+  },
+  "LR300": {
+    "stop_id": "LR300",
+    "name_en": "Pui To",
+    "name_tc": "杯渡",
+    "lat": 22.39460925574965,
+    "lon": 113.97680493837373
+  },
+  "LR310": {
+    "stop_id": "LR310",
+    "name_en": "Hoh Fuk Tong",
+    "name_tc": "何福堂",
+    "lat": 22.39737331817869,
+    "lon": 113.97740308671892
+  },
+  "LR320": {
+    "stop_id": "LR320",
+    "name_en": "San Hui",
+    "name_tc": "新墟",
+    "lat": 22.40021869943932,
+    "lon": 113.97803998871692
+  },
+  "LR330": {
+    "stop_id": "LR330",
+    "name_en": "Prime View",
+    "name_tc": "景峰",
+    "lat": 22.403128300232254,
+    "lon": 113.97950232219675
+  },
+  "LR340": {
+    "stop_id": "LR340",
+    "name_en": "Fung Tei",
+    "name_tc": "鳳地",
+    "lat": 22.40673955158501,
+    "lon": 113.97873968901024
+  },
+  "LR50": {
+    "stop_id": "LR50",
+    "name_en": "Tsing Wun",
+    "name_tc": "青雲",
+    "lat": 22.39434450234805,
+    "lon": 113.96740495573783
+  },
+  "LR40": {
+    "stop_id": "LR40",
+    "name_en": "Tsing Shan Tsuen",
+    "name_tc": "青山村",
+    "lat": 22.390397615829112,
+    "lon": 113.96696416734129
+  },
+  "LR30": {
+    "stop_id": "LR30",
+    "name_en": "Lung Mun",
+    "name_tc": "龍門",
+    "lat": 22.385256691211893,
+    "lon": 113.96498123095571
+  },
+  "LR20": {
+    "stop_id": "LR20",
+    "name_en": "Light Rail Depot",
+    "name_tc": "輕鐵車廠",
+    "lat": 22.381805000722455,
+    "lon": 113.96342310808737
+  },
+  "LR15": {
+    "stop_id": "LR15",
+    "name_en": "Butterfly",
+    "name_tc": "蝴蝶",
+    "lat": 22.378172414049967,
+    "lon": 113.96166142949328
+  },
+  "LR10": {
+    "stop_id": "LR10",
+    "name_en": "Melody Garden",
+    "name_tc": "美樂",
+    "lat": 22.37504713594796,
+    "lon": 113.96111277697455
+  },
+  "LR80": {
+    "stop_id": "LR80",
+    "name_en": "Affluence",
+    "name_tc": "澤豐",
+    "lat": 22.40349409829556,
+    "lon": 113.97588903289837
+  },
+  "LR90": {
+    "stop_id": "LR90",
+    "name_en": "Tuen Mun Hospital",
+    "name_tc": "屯門醫院",
+    "lat": 22.40776706208687,
+    "lon": 113.97714545598332
+  },
+  "LR350": {
+    "stop_id": "LR350",
+    "name_en": "Lam Tei",
+    "name_tc": "藍地",
+    "lat": 22.41850071372153,
+    "lon": 113.98162713956452
+  },
+  "LR360": {
+    "stop_id": "LR360",
+    "name_en": "Nai Wai",
+    "name_tc": "泥圍",
+    "lat": 22.423653670158757,
+    "lon": 113.98632110574998
+  },
+  "LR370": {
+    "stop_id": "LR370",
+    "name_en": "Chung Uk Tsuen",
+    "name_tc": "鍾屋村",
+    "lat": 22.429656741563896,
+    "lon": 113.99222848365673
+  },
+  "LR380": {
+    "stop_id": "LR380",
+    "name_en": "Hung Shui Kiu",
+    "name_tc": "洪水橋",
+    "lat": 22.433644950146522,
+    "lon": 113.99736184014174
+  },
+  "LR390": {
+    "stop_id": "LR390",
+    "name_en": "Tong Fong Tsuen",
+    "name_tc": "塘坊村",
+    "lat": 22.440112175505853,
+    "lon": 114.00703869102897
+  },
+  "LR400": {
+    "stop_id": "LR400",
+    "name_en": "Ping Shan",
+    "name_tc": "屏山",
+    "lat": 22.44281716726456,
+    "lon": 114.01175664716003
+  },
+  "LR560": {
+    "stop_id": "LR560",
+    "name_en": "Shui Pin Wai",
+    "name_tc": "水邊圍",
+    "lat": 22.444460329982896,
+    "lon": 114.02044928710615
+  },
+  "LR570": {
+    "stop_id": "LR570",
+    "name_en": "Fung Nin Road",
+    "name_tc": "豐年路",
+    "lat": 22.444472664504442,
+    "lon": 114.02389796422909
+  },
+  "LR580": {
+    "stop_id": "LR580",
+    "name_en": "Hong Lok Road",
+    "name_tc": "康樂路",
+    "lat": 22.444547452933527,
+    "lon": 114.02660826361532
+  },
+  "LR590": {
+    "stop_id": "LR590",
+    "name_en": "Tai Tong Road",
+    "name_tc": "大棠路",
+    "lat": 22.444522541239387,
+    "lon": 114.02896894497434
+  },
+  "LR600": {
+    "stop_id": "LR600",
+    "name_en": "Yuen Long",
+    "name_tc": "元朗",
+    "lat": 22.4457194146405,
+    "lon": 114.03436905622031
+  },
+  "LR430": {
+    "stop_id": "LR430",
+    "name_en": "Tin Shui Wai",
+    "name_tc": "天水圍",
+    "lat": 22.449448496282024,
+    "lon": 114.00595867985363
+  },
+  "LR435": {
+    "stop_id": "LR435",
+    "name_en": "Tin Tsz",
+    "name_tc": "天慈",
+    "lat": 22.452699514795942,
+    "lon": 114.00602270235179
+  },
+  "LR450": {
+    "stop_id": "LR450",
+    "name_en": "Tin Wu",
+    "name_tc": "天湖",
+    "lat": 22.454992969814594,
+    "lon": 114.00576729351278
+  },
+  "LR455": {
+    "stop_id": "LR455",
+    "name_en": "Ginza",
+    "name_tc": "銀座",
+    "lat": 22.457556674313008,
+    "lon": 114.00488975006985
+  },
+  "LR500": {
+    "stop_id": "LR500",
+    "name_en": "Tin Wing",
+    "name_tc": "天榮",
+    "lat": 22.45953188212045,
+    "lon": 114.00260413228109
+  },
+  "LR510": {
+    "stop_id": "LR510",
+    "name_en": "Tin Yuet",
+    "name_tc": "天悅",
+    "lat": 22.462817819439575,
+    "lon": 114.00156042392811
+  },
+  "LR520": {
+    "stop_id": "LR520",
+    "name_en": "Tin Sau",
+    "name_tc": "天秀",
+    "lat": 22.46554652197373,
+    "lon": 114.00296582401127
+  },
+  "LR530": {
+    "stop_id": "LR530",
+    "name_en": "Wetland Park",
+    "name_tc": "濕地公園",
+    "lat": 22.469600620335296,
+    "lon": 114.00245551381624
+  },
+  "LR540": {
+    "stop_id": "LR540",
+    "name_en": "Tin Heng",
+    "name_tc": "天恒",
+    "lat": 22.46966199627131,
+    "lon": 114.00076478850042
+  },
+  "LR550": {
+    "stop_id": "LR550",
+    "name_en": "Tin Yat",
+    "name_tc": "天逸",
+    "lat": 22.466968819364947,
+    "lon": 113.99883467166308
+  },
+  "LR480": {
+    "stop_id": "LR480",
+    "name_en": "Tin Fu",
+    "name_tc": "天富",
+    "lat": 22.46453838688387,
+    "lon": 113.99770100289795
+  },
+  "LR468": {
+    "stop_id": "LR468",
+    "name_en": "Chung Fu",
+    "name_tc": "頌富",
+    "lat": 22.462027106241187,
+    "lon": 113.9969561114336
+  },
+  "LR460": {
+    "stop_id": "LR460",
+    "name_en": "Tin Shui",
+    "name_tc": "天瑞",
+    "lat": 22.45591626149699,
+    "lon": 113.99943171149289
+  },
+  "LR448": {
+    "stop_id": "LR448",
+    "name_en": "Locwood",
+    "name_tc": "樂湖",
+    "lat": 22.45303736037313,
+    "lon": 114.00107724532127
+  },
+  "LR445": {
+    "stop_id": "LR445",
+    "name_en": "Tin Yiu",
+    "name_tc": "天耀",
+    "lat": 22.45038414875777,
+    "lon": 114.00267385393636
+  },
+  "LR275": {
+    "stop_id": "LR275",
+    "name_en": "Yau Oi",
+    "name_tc": "友愛",
+    "lat": 22.386721560898586,
+    "lon": 113.97352432884442
+  },
+  "LR425": {
+    "stop_id": "LR425",
+    "name_en": "Hang Mei Tsuen",
+    "name_tc": "坑尾村",
+    "lat": 22.44508634432232,
+    "lon": 114.00552686444267
+  },
+  "LR490": {
+    "stop_id": "LR490",
+    "name_en": "Chestwood",
+    "name_tc": "翠湖",
+    "lat": 22.45971817582367,
+    "lon": 113.99953374543996
+  }
+}
