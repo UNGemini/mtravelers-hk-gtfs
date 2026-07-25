@@ -1,4 +1,4 @@
-# github.com/hkbus/hk-bus-crawling (Patched for MCT Pipeline)
+# github.com/hkbus/hk-bus-crawling (Patched for mtravelers pipeline)
 
 import asyncio
 import logging

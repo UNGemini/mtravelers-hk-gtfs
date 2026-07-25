@@ -1,4 +1,4 @@
-# orig: github.com/hkbus/hk-bus-crawling (Patched for MCT)
+# orig: github.com/hkbus/hk-bus-crawling (Patched for mtravelers)
 
 import asyncio
 import csv

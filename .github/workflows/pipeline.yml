@@ -60,15 +60,21 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Cache GTFS raw data
+      # Persist partial .cache even if main.py fails mid-run so the next
+      # workflow can resume downloads instead of starting from scratch.
+      - name: Cache mtravelers data
         uses: actions/cache@v4
         with:
           path: |
             .cache
             waypoints
-          key: mct-gtfs-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          # Stable key: do not hash source files, or every code fix busts the
+          # partial download cache that main.py relies on for resume.
+          key: mtravelers-gtfs-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
+            mtravelers-gtfs-cache-${{ runner.os }}-
             mct-gtfs-cache-${{ runner.os }}-
+          save-always: true
 
       - name: Scrape & Generate GTFS
         run: python main.py
@@ -92,7 +98,7 @@ jobs:
 
           # Optional dense compiler (only if checked into the repo).
           if [ -x compiler/gtfs-dense-compiler ]; then
-            ./compiler/gtfs-dense-compiler public/hk.gtfs.zip public/mct-graph.dense
+            ./compiler/gtfs-dense-compiler public/hk.gtfs.zip public/mtravelers-graph.dense
           else
             echo "Dense compiler not present at compiler/gtfs-dense-compiler; skipping."
           fi
