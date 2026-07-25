@@ -22,6 +22,8 @@ jobs:
 
       - name: Scrape & Generate GTFS
         run: python main.py
+        env:
+          DATABASE_URL: "sqlite:///mct_processing.db"
 
       - name: Compile GTFS-Dense
         # Compiles the raw GTFS output into the hyper-optimized binary format
