@@ -2,59 +2,123 @@ name: GTFS Data Pipeline
 
 on:
   schedule:
-    # Option 1: Weekly run on Sundays at 03:00 HKT (19:00 UTC Saturday)
+    # Weekly run: Sunday 03:00 HKT (Saturday 19:00 UTC)
     - cron: '0 19 * * 0'
-    # Option 2: Keep daily run if you want (caching will prevent full re-downloads)
-    # - cron: '0 19 * * *'
-  workflow_dispatch: # Enables manual trigger button in GitHub UI
+  workflow_dispatch:
+
+# Avoid overlapping scheduled/manual runs on the same branch.
+concurrency:
+  group: gtfs-pipeline-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    # App expects PostgreSQL (PostGIS preferred). SQLite is not supported for
+    # the spatial tables / SQL dialect used by this pipeline.
+    services:
+      db:
+        image: postgis/postgis:13-3.1
+        env:
+          POSTGRES_DB: gtfs_hk
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U user -d gtfs_hk"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
+          cache: pip
 
-      - name: Install Scraper Dependencies
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libexpat1 \
+            mdbtools \
+            gdal-bin \
+            libgdal-dev \
+            libgeos-dev \
+            libproj-dev \
+            libspatialindex-dev \
+            wget \
+            zip
+
+      - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # ==========================================
-      # ADDED: Cache the .cache directory across runs
-      # ==========================================
-      - name: Cache GTFS Raw Data
+      - name: Cache GTFS raw data
         uses: actions/cache@v4
         with:
-          path: .cache
-          key: mct-gtfs-cache-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          path: |
+            .cache
+            waypoints
+          key: mct-gtfs-cache-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
           restore-keys: |
             mct-gtfs-cache-${{ runner.os }}-
 
       - name: Scrape & Generate GTFS
         run: python main.py
         env:
-          DATABASE_URL: "sqlite:///mtravelers_processing.db"
+          # Match docker-compose credentials; host is the GHA service port map.
+          DATABASE_URL: postgresql://user:password@localhost:5432/gtfs_hk
 
-      - name: Compile GTFS-Dense
-        # Compiles the raw GTFS output into the hyper-optimized binary format
-        run: ./compiler/gtfs-dense-compiler output.zip public/mct-graph.dense
+      - name: Stage public artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p public
+
+          if [ ! -f output/hk.gtfs.zip ]; then
+            echo "ERROR: expected GTFS zip at output/hk.gtfs.zip"
+            ls -la output || true
+            exit 1
+          fi
+
+          cp output/hk.gtfs.zip public/hk.gtfs.zip
+          ls -lah public/hk.gtfs.zip
+
+          # Optional dense compiler (only if checked into the repo).
+          if [ -x compiler/gtfs-dense-compiler ]; then
+            ./compiler/gtfs-dense-compiler public/hk.gtfs.zip public/mct-graph.dense
+          else
+            echo "Dense compiler not present at compiler/gtfs-dense-compiler; skipping."
+          fi
 
       - name: Fetch Latest HK PMTiles Map Data
-        # Pulls pre-compiled vector map directly from community releases
+        continue-on-error: true
         run: |
-          wget https://github.com/wheelstransit/hk-pmtiles-generation/releases/latest/download/hongkong.pmtiles -O public/hongkong.pmtiles
+          wget -q --show-progress \
+            https://github.com/wheelstransit/hk-pmtiles-generation/releases/latest/download/hongkong.pmtiles \
+            -O public/hongkong.pmtiles
 
       - name: Generate Security Headers
-        # Enforces Cross-Origin Isolation for WASM multithreading on Cloudflare
         run: |
-          echo "/*" > public/_headers
-          echo "  Cross-Origin-Embedder-Policy: require-corp" >> public/_headers
-          echo "  Cross-Origin-Opener-Policy: same-origin" >> public/_headers
-          echo "  Access-Control-Allow-Origin: *" >> public/_headers
+          cat > public/_headers << 'EOF'
+          /*
+            Cross-Origin-Embedder-Policy: require-corp
+            Cross-Origin-Opener-Policy: same-origin
+            Access-Control-Allow-Origin: *
+          EOF
+
+      - name: Upload GTFS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hk.gtfs.zip
+          path: output/hk.gtfs.zip
+          retention-days: 90
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1

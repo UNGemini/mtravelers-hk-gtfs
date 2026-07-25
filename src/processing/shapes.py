@@ -89,8 +89,18 @@ def generate_shapes_from_csdi_files(output_path, engine, silent=False, gov_route
             if meta:
                 shape_info_list.append(meta)
 
-    gov_route_ids_in_shapes = [str(s['gov_route_id']) for s in shape_info_list]
-    gov_routes_df = pd.read_sql(f"SELECT route_id, agency_id FROM gov_gtfs_routes WHERE route_id IN ({','.join(gov_route_ids_in_shapes)})", engine)
+    gov_route_ids_in_shapes = [str(s['gov_route_id']) for s in shape_info_list if s and s.get('gov_route_id') is not None]
+    if not gov_route_ids_in_shapes:
+        if not silent:
+            print("No shape route ids produced; skipping agency merge.")
+        return True, shape_info_list
+
+    # Quote ids to keep SQL valid for text route_id columns.
+    quoted_ids = ",".join(f"'{rid}'" for rid in gov_route_ids_in_shapes)
+    gov_routes_df = pd.read_sql(
+        f"SELECT route_id, agency_id FROM gov_gtfs_routes WHERE route_id::text IN ({quoted_ids})",
+        engine,
+    )
     gov_routes_df['route_id'] = gov_routes_df['route_id'].astype(str)
 
     shape_info_df = pd.DataFrame(shape_info_list)

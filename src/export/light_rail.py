@@ -27,7 +27,10 @@ DEFAULT_FREQUENCIES = (
 )
 FALLBACK_SECONDS_PER_STOP = 180
 LIGHT_RAIL_ROUTES_AND_STOPS_URL = "https://opendata.mtr.com.hk/data/light_rail_routes_and_stops.csv"
-GEODATA_BASE_URL = "https://geodata.gov.hk/gs/api/v1.0.0/locationSearch?q="
+GEODATA_BASE_URLS = (
+    "https://geodata.gov.hk/gs/api/v1.0.0/locationSearch?q=",
+    "https://www.map.gov.hk/gs/api/v1.0.0/locationSearch?q=",
+)
 LIGHT_RAIL_STOP_SUFFIX = "\u8f15\u9435\u7ad9"
 ROUTE_COLORS = {
     "505": "DA2128",
@@ -179,21 +182,36 @@ async def _fetch_route_and_stop_data(silent: bool = False) -> Tuple[Dict[str, Di
                     "stop_lon": None,
                 }
                 stop_list[light_rail_id] = stop_record
-                try:
-                    encoded_query = quote(f"{stop_name_tc}{LIGHT_RAIL_STOP_SUFFIX}")
-                    geo_url = f"{GEODATA_BASE_URL}{encoded_query}"
-                    geo_response = await client.get(geo_url, headers={"Accept": "application/json"})
-                    geo_response.raise_for_status()
-                    data = geo_response.json()
-                    if isinstance(data, list) and data:
-                        lon, lat = transformer.transform(data[0]["x"], data[0]["y"])
-                        stop_record["stop_lat"] = lat
-                        stop_record["stop_lon"] = lon
-                    elif not silent:
-                        logging.warning("No geodata result for Light Rail stop %s", stop_name_tc)
-                except (httpx.RequestError, KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
-                    if not silent:
-                        logging.warning("Failed to fetch geodata for Light Rail stop %s: %s", stop_name_tc, exc)
+                encoded_query = quote(f"{stop_name_tc}{LIGHT_RAIL_STOP_SUFFIX}")
+                last_exc: Optional[Exception] = None
+                for base_url in GEODATA_BASE_URLS:
+                    try:
+                        geo_url = f"{base_url}{encoded_query}"
+                        geo_response = await client.get(geo_url, headers={"Accept": "application/json"})
+                        if geo_response.status_code in (429, 503):
+                            last_exc = httpx.HTTPStatusError(
+                                f"HTTP {geo_response.status_code}",
+                                request=geo_response.request,
+                                response=geo_response,
+                            )
+                            continue
+                        geo_response.raise_for_status()
+                        data = geo_response.json()
+                        if isinstance(data, list) and data:
+                            lon, lat = transformer.transform(data[0]["x"], data[0]["y"])
+                            stop_record["stop_lat"] = lat
+                            stop_record["stop_lon"] = lon
+                            last_exc = None
+                            break
+                        elif not silent:
+                            logging.warning("No geodata result for Light Rail stop %s", stop_name_tc)
+                            last_exc = None
+                            break
+                    except (httpx.HTTPError, httpx.RequestError, KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
+                        last_exc = exc
+                        continue
+                if last_exc is not None and not silent:
+                    logging.warning("Failed to fetch geodata for Light Rail stop %s: %s", stop_name_tc, last_exc)
 
     return route_list, stop_list
 

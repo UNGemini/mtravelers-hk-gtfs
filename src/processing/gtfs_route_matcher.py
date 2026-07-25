@@ -680,57 +680,150 @@ def match_gmb_routes_by_first_stop_location(
     if debug:
         print(f"Matching {operator_name} routes to government GTFS by first stop location...")
 
-    # Get operator routes with first stop locations for each direction
-    operator_query = """
-        SELECT 
-            gr.region || '-' || gr.route_code as route,
-            gr.region,
-            gr.route_code,
-            gss.route_seq,
-            gr.region || '-' || gr.route_code || '-' || 
-                CASE WHEN gss.route_seq = 1 THEN 'O' ELSE 'I' END || '-1' as route_key,
-            ST_X(gs.geometry) as first_stop_lng,
-            ST_Y(gs.geometry) as first_stop_lat,
-            gs.stop_name_en as first_stop_name
-        FROM gmb_routes gr 
-        JOIN gmb_stop_sequences gss ON gr.route_code = gss.route_code AND gr.region = gss.region
-        JOIN gmb_stops gs ON gss.stop_id = gs.stop_id
-        WHERE gss.sequence = 1
-    """
-    
+    gmb_routes_df = pd.read_sql("SELECT region, route_code FROM gmb_routes", engine)
+    gmb_stop_sequences_df = pd.read_sql("SELECT region, route_code, route_seq, stop_id, sequence FROM gmb_stop_sequences", engine)
+    gmb_stops_df = pd.read_sql("SELECT * FROM gmb_stops", engine)
+
+    if gmb_routes_df.empty or gmb_stop_sequences_df.empty or gmb_stops_df.empty:
+        if debug:
+            print("No GMB route, stop-sequence, or stop data available")
+        return {}
+
+    lat_col = None
+    lon_col = None
+    for lat_candidate, lon_candidate in [
+        ("stop_lat", "stop_lon"),
+        ("stop_lat", "stop_lng"),
+        ("stop_lat", "stop_long"),
+        ("latitude", "longitude"),
+        ("lat", "lon"),
+        ("lat", "long"),
+        ("lat", "lng"),
+        ("latitude", "lon"),
+        ("latitude", "long"),
+    ]:
+        if lat_candidate in gmb_stops_df.columns and lon_candidate in gmb_stops_df.columns:
+            lat_col = lat_candidate
+            lon_col = lon_candidate
+            break
+
+    if lat_col is None and lon_col is None and "geometry" in gmb_stops_df.columns:
+        try:
+            import geopandas as gpd
+            gdf = gpd.GeoDataFrame(gmb_stops_df, geometry="geometry", crs="EPSG:4326")
+            gmb_stops_df = gmb_stops_df.copy()
+            gmb_stops_df["__geo_lat__"] = gdf.geometry.y
+            gmb_stops_df["__geo_lon__"] = gdf.geometry.x
+            lat_col = "__geo_lat__"
+            lon_col = "__geo_lon__"
+        except Exception:
+            lat_col = None
+            lon_col = None
+
+    if lat_col is None or lon_col is None:
+        if debug:
+            print("No usable coordinate columns found in gmb_stops")
+        return {}
+
+    stop_name_col = next((c for c in ["stop_name_en", "stop_name", "name", "stop_name_tc", "stop_name_sc"] if c in gmb_stops_df.columns), None)
+    if stop_name_col is None:
+        stop_name_col = gmb_stops_df.columns[0]
+
+    gmb_stops_df = gmb_stops_df[["stop_id", lat_col, lon_col, stop_name_col]].copy()
+    gmb_stops_df[lat_col] = pd.to_numeric(gmb_stops_df[lat_col], errors="coerce")
+    gmb_stops_df[lon_col] = pd.to_numeric(gmb_stops_df[lon_col], errors="coerce")
+
+    gmb_stop_sequences_df = gmb_stop_sequences_df.copy()
+    gmb_stop_sequences_df["sequence_num"] = pd.to_numeric(gmb_stop_sequences_df["sequence"], errors="coerce")
+    first_sequences_df = gmb_stop_sequences_df[gmb_stop_sequences_df["sequence_num"] == 1].copy()
+
+    operator_routes = first_sequences_df.merge(gmb_routes_df, on=["region", "route_code"], how="left")
+    operator_routes = operator_routes.merge(gmb_stops_df, on="stop_id", how="left")
+    operator_routes = operator_routes.rename(columns={lat_col: "first_stop_lat", lon_col: "first_stop_lng", stop_name_col: "first_stop_name"})
+    operator_routes["route"] = operator_routes["region"].astype(str) + "-" + operator_routes["route_code"].astype(str)
+    operator_routes["route_key"] = (
+        operator_routes["region"].astype(str) + "-" + operator_routes["route_code"].astype(str) + "-" +
+        (operator_routes["route_seq"].astype(int).eq(1).map({True: "O", False: "I"}) if pd.api.types.is_numeric_dtype(operator_routes["route_seq"]) else operator_routes["route_seq"].astype(str).eq("1").map({True: "O", False: "I"})) + "-1"
+    )
+
     if route_filter:
-        # Extract base route numbers from regional routes (HKI-1 -> 1)
-        base_routes = [r.split('-')[-1] if '-' in r else r for r in route_filter]
-        route_filter_str = "', '".join(base_routes)
-        operator_query += f" AND gr.route_code IN ('{route_filter_str}')"
-    
-    operator_routes = pd.read_sql(operator_query, engine)
-    
+        base_routes = [str(r).split('-')[-1] if '-' in str(r) else str(r) for r in route_filter]
+        operator_routes = operator_routes[operator_routes["route_code"].astype(str).isin(base_routes)]
+
+    operator_routes["first_stop_lat"] = pd.to_numeric(operator_routes["first_stop_lat"], errors="coerce")
+    operator_routes["first_stop_lng"] = pd.to_numeric(operator_routes["first_stop_lng"], errors="coerce")
+
     if operator_routes.empty:
         if debug:
             print("No operator routes found")
         return {}
 
-    # Get government GMB routes with first stop locations
-    gov_query = """
-        SELECT 
-            gr.route_id,
-            gr.route_short_name,
-            gr.route_long_name,
-            gr.agency_id,
-            ST_X(gs.geometry) as first_stop_lng,
-            ST_Y(gs.geometry) as first_stop_lat,
-            gs.stop_name as first_stop_name,
-            gt.service_id as gov_service_id
-        FROM gov_gtfs_routes gr
-        JOIN gov_gtfs_trips gt ON gr.route_id = gt.route_id
-        JOIN gov_gtfs_stop_times gst ON gt.trip_id = gst.trip_id AND gst.stop_sequence = 1
-        JOIN gov_gtfs_stops gs ON gst.stop_id = gs.stop_id
-        WHERE gr.agency_id = 'GMB'
-    """
-    
-    gov_routes = pd.read_sql(gov_query, engine)
-    
+    gov_routes_df = pd.read_sql("SELECT route_id, route_short_name, route_long_name, agency_id FROM gov_gtfs_routes WHERE agency_id = 'GMB'", engine)
+    gov_trips_df = pd.read_sql("SELECT route_id, service_id, trip_id FROM gov_gtfs_trips", engine)
+    gov_stop_times_df = pd.read_sql("SELECT trip_id, stop_id, stop_sequence FROM gov_gtfs_stop_times", engine)
+    gov_stops_df = pd.read_sql("SELECT * FROM gov_gtfs_stops", engine)
+
+    if gov_routes_df.empty or gov_trips_df.empty or gov_stop_times_df.empty or gov_stops_df.empty:
+        if debug:
+            print("No government GMB route, trip, stop-time, or stop data available")
+        return {}
+
+    gov_lat_col = None
+    gov_lon_col = None
+    for lat_candidate, lon_candidate in [
+        ("stop_lat", "stop_lon"),
+        ("stop_lat", "stop_lng"),
+        ("stop_lat", "stop_long"),
+        ("latitude", "longitude"),
+        ("lat", "lon"),
+        ("lat", "long"),
+        ("lat", "lng"),
+        ("latitude", "lon"),
+        ("latitude", "long"),
+    ]:
+        if lat_candidate in gov_stops_df.columns and lon_candidate in gov_stops_df.columns:
+            gov_lat_col = lat_candidate
+            gov_lon_col = lon_candidate
+            break
+
+    if gov_lat_col is None and gov_lon_col is None and "geometry" in gov_stops_df.columns:
+        try:
+            import geopandas as gpd
+            gdf = gpd.GeoDataFrame(gov_stops_df, geometry="geometry", crs="EPSG:4326")
+            gov_stops_df = gov_stops_df.copy()
+            gov_stops_df["__geo_lat__"] = gdf.geometry.y
+            gov_stops_df["__geo_lon__"] = gdf.geometry.x
+            gov_lat_col = "__geo_lat__"
+            gov_lon_col = "__geo_lon__"
+        except Exception:
+            gov_lat_col = None
+            gov_lon_col = None
+
+    if gov_lat_col is None or gov_lon_col is None:
+        if debug:
+            print("No usable coordinate columns found in gov_gtfs_stops")
+        return {}
+
+    gov_stop_name_col = next((c for c in ["stop_name", "stop_name_en", "name", "stop_name_tc", "stop_name_sc"] if c in gov_stops_df.columns), None)
+    if gov_stop_name_col is None:
+        gov_stop_name_col = gov_stops_df.columns[0]
+
+    gov_stops_df = gov_stops_df[["stop_id", gov_lat_col, gov_lon_col, gov_stop_name_col]].copy()
+    gov_stops_df[gov_lat_col] = pd.to_numeric(gov_stops_df[gov_lat_col], errors="coerce")
+    gov_stops_df[gov_lon_col] = pd.to_numeric(gov_stops_df[gov_lon_col], errors="coerce")
+
+    gov_stop_times_df = gov_stop_times_df.copy()
+    gov_stop_times_df["stop_sequence_num"] = pd.to_numeric(gov_stop_times_df["stop_sequence"], errors="coerce")
+    first_stop_times_df = gov_stop_times_df[gov_stop_times_df["stop_sequence_num"] == 1].copy()
+
+    gov_routes = first_stop_times_df.merge(gov_trips_df[["route_id", "trip_id", "service_id"]], on="trip_id", how="left")
+    gov_routes = gov_routes.merge(gov_routes_df, on="route_id", how="left")
+    gov_routes = gov_routes.merge(gov_stops_df, on="stop_id", how="left")
+    gov_routes = gov_routes.rename(columns={gov_lat_col: "first_stop_lat", gov_lon_col: "first_stop_lng", gov_stop_name_col: "first_stop_name"})
+    gov_routes["gov_service_id"] = gov_routes["service_id"]
+    gov_routes["first_stop_lat"] = pd.to_numeric(gov_routes["first_stop_lat"], errors="coerce")
+    gov_routes["first_stop_lng"] = pd.to_numeric(gov_routes["first_stop_lng"], errors="coerce")
+
     if gov_routes.empty:
         if debug:
             print("No government GMB routes found")

@@ -1,4 +1,6 @@
 import pandas as pd
+import ssl
+from urllib.request import urlopen
 
 FREQUENCIES_URL = "https://static.data.gov.hk/td/pt-headway-en/frequencies.txt"
 CALENDAR_URL = "https://static.data.gov.hk/td/pt-headway-en/calendar.txt"
@@ -10,12 +12,19 @@ STOP_TIMES_URL = "https://static.data.gov.hk/td/pt-headway-en/stop_times.txt"
 FARE_ATTRIBUTES_URL = "https://static.data.gov.hk/td/pt-headway-en/fare_attributes.txt"
 FARE_RULES_URL = "https://static.data.gov.hk/td/pt-headway-en/fare_rules.txt"
 
+def _read_csv_from_url(url: str) -> pd.DataFrame:
+    """Read a CSV from a URL with certificate verification disabled for this environment."""
+    context = ssl._create_unverified_context()
+    with urlopen(url, context=context) as response:
+        return pd.read_csv(response)
+
+
 def fetch_frequencies_data(silent=False):
     """Fetches the frequencies (headway) data from frequencies.txt."""
     if not silent:
         print("Fetching frequencies data from Gov GTFS source...")
     try:
-        df = pd.read_csv(FREQUENCIES_URL)
+        df = _read_csv_from_url(FREQUENCIES_URL)
         if not silent:
             print(f"Successfully fetched {len(df)} frequency records.")
         return df.to_dict('records')
@@ -29,7 +38,7 @@ def fetch_trips_data(silent=False):
     if not silent:
         print("Fetching trips data from Gov GTFS source...")
     try:
-        df = pd.read_csv(TRIPS_URL)
+        df = _read_csv_from_url(TRIPS_URL)
         if not silent:
             print(f"Successfully fetched {len(df)} trip records.")
         return df.to_dict('records')
@@ -43,7 +52,7 @@ def fetch_routes_data(silent=False):
     if not silent:
         print("Fetching routes data from Gov GTFS source...")
     try:
-        df = pd.read_csv(ROUTES_URL)
+        df = _read_csv_from_url(ROUTES_URL)
         if not silent:
             print(f"Successfully fetched {len(df)} route records.")
         return df.to_dict('records')
@@ -57,7 +66,7 @@ def fetch_calendar_data(silent=False):
     if not silent:
         print("Fetching calendar data from Gov GTFS source...")
     try:
-        df = pd.read_csv(CALENDAR_URL)
+        df = _read_csv_from_url(CALENDAR_URL)
         if not silent:
             print(f"Successfully fetched {len(df)} calendar records.")
         return df.to_dict('records')
@@ -71,7 +80,7 @@ def fetch_calendar_dates_data(silent=False):
     if not silent:
         print("Fetching calendar dates from Gov GTFS source...")
     try:
-        df = pd.read_csv(CALENDAR_DATES_URL)
+        df = _read_csv_from_url(CALENDAR_DATES_URL)
         if not silent:
             print(f"Successfully fetched {len(df)} calendar date records.")
         return df.to_dict('records')
@@ -85,7 +94,7 @@ def fetch_stops_data(silent=False):
     if not silent:
         print("Fetching stops data from Gov GTFS source...")
     try:
-        df = pd.read_csv(STOPS_URL)
+        df = _read_csv_from_url(STOPS_URL)
         if not silent:
             print(f"Successfully fetched {len(df)} stop records.")
         return df.to_dict('records')
@@ -99,7 +108,7 @@ def fetch_stop_times_data(silent=False):
     if not silent:
         print("Fetching stop_times data from Gov GTFS source...")
     try:
-        df = pd.read_csv(STOP_TIMES_URL)
+        df = _read_csv_from_url(STOP_TIMES_URL)
         if not silent:
             print(f"Successfully fetched {len(df)} stop_times records.")
         return df.to_dict('records')
@@ -113,7 +122,7 @@ def fetch_fare_attributes_data(silent=False):
     if not silent:
         print("Fetching fare_attributes data from Gov GTFS source...")
     try:
-        df = pd.read_csv(FARE_ATTRIBUTES_URL)
+        df = _read_csv_from_url(FARE_ATTRIBUTES_URL)
         if not silent:
             print(f"Successfully fetched {len(df)} fare_attributes records.")
         return df.to_dict('records')
@@ -127,7 +136,7 @@ def fetch_fare_rules_data(silent=False):
     if not silent:
         print("Fetching fare_rules data from Gov GTFS source...")
     try:
-        df = pd.read_csv(FARE_RULES_URL)
+        df = _read_csv_from_url(FARE_RULES_URL)
         if not silent:
             print(f"Successfully fetched {len(df)} fare_rules records.")
         return df.to_dict('records')

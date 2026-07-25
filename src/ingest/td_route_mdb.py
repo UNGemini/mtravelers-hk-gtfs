@@ -30,6 +30,8 @@ def _export_table_to_csv(mdb_path: str, table: str, silent: bool = False) -> pd.
     try:
         subprocess.run(["mdb-export", "--version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except Exception as e:
+        if not silent:
+            print("Warning: mdb-export (mdbtools) is not available; skipping TD route MDB lookup.")
         raise RuntimeError("mdb-export (mdbtools) is required but not installed in the container.") from e
 
     with tempfile.TemporaryDirectory() as tmpd:
@@ -53,8 +55,13 @@ def get_ctb_route_id_map(cache_dir: str = ".cache", silent: bool = False) -> Dic
     2. For routes that don't have any SPECIAL_TYPE=0 variant, include the first available route
        regardless of its SPECIAL_TYPE value
     """
-    mdb_path = _ensure_download(cache_dir, silent)
-    route_df = _export_table_to_csv(mdb_path, "ROUTE", silent)
+    try:
+        mdb_path = _ensure_download(cache_dir, silent)
+        route_df = _export_table_to_csv(mdb_path, "ROUTE", silent)
+    except RuntimeError as exc:
+        if not silent:
+            print(f"Warning: falling back to empty CTB route mapping because {exc}")
+        return {}
 
     # Normalize column names
     route_df.columns = [c.strip().upper() for c in route_df.columns]

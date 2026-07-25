@@ -5,6 +5,42 @@ from shapely import wkt
 import re
 from .mtrbus_station_merging import unify_mtrbus_stops
 
+
+def _write_spatial_table_as_sql(gdf: gpd.GeoDataFrame, table_name: str, engine: Engine, if_exists: str = 'replace'):
+    """Persist a GeoDataFrame to SQL using standard columns when PostGIS is unavailable."""
+    if gdf.empty:
+        gdf = gdf.copy()
+
+    df = gdf.copy()
+    if 'geometry' in df.columns:
+        df = df.drop(columns=['geometry'])
+
+    # Always try to materialize lat/lon when geometry is present so non-PostGIS
+    # consumers (and later re-reads) can rebuild points without PostGIS.
+    if hasattr(gdf, 'geometry') and gdf.geometry is not None and len(gdf):
+        try:
+            ys = gdf.geometry.y
+            xs = gdf.geometry.x
+            if 'lat' not in df.columns:
+                df['lat'] = ys
+            if 'lon' not in df.columns:
+                df['lon'] = xs
+        except Exception:
+            # Geometry may contain nulls; fall back to row-wise extraction.
+            def _y(g):
+                return g.y if g is not None and getattr(g, 'is_empty', True) is False else None
+
+            def _x(g):
+                return g.x if g is not None and getattr(g, 'is_empty', True) is False else None
+
+            if 'lat' not in df.columns:
+                df['lat'] = gdf.geometry.apply(_y)
+            if 'lon' not in df.columns:
+                df['lon'] = gdf.geometry.apply(_x)
+
+    df.to_sql(table_name, engine, if_exists=if_exists, index=False)
+
+
 def process_and_load_kmb_data(raw_routes: list, raw_stops: list, raw_route_stops: list, engine: Engine, silent=False):
     if not all([raw_routes, raw_stops, raw_route_stops]):
         if not silent:
@@ -33,12 +69,17 @@ def process_and_load_kmb_data(raw_routes: list, raw_stops: list, raw_route_stops
         crs="EPSG:4326"
     )
     stops_gdf = stops_gdf.drop(columns=['lat', 'long'])
-    stops_gdf.to_postgis(
-        'kmb_stops',
-        engine,
-        if_exists='replace',
-        index=False
-    )
+    try:
+        stops_gdf.to_postgis(
+            'kmb_stops',
+            engine,
+            if_exists='replace',
+            index=False
+        )
+    except Exception as e:
+        if not silent:
+            print(f"PostGIS write failed for kmb_stops ({e}); falling back to regular SQL table")
+        _write_spatial_table_as_sql(stops_gdf, 'kmb_stops', engine)
     if not silent:
         print(f"Loaded {len(stops_gdf)} records into spatial table 'kmb_stops'.")
 
@@ -135,7 +176,12 @@ def process_and_load_gmb_data(raw_routes: dict, raw_stops: list, raw_route_stops
         crs="EPSG:4326"
     )
     stops_gdf = stops_gdf.drop(columns=['lat', 'long'])
-    stops_gdf.to_postgis('gmb_stops', engine, if_exists='replace', index=False)
+    try:
+        stops_gdf.to_postgis('gmb_stops', engine, if_exists='replace', index=False)
+    except Exception as e:
+        if not silent:
+            print(f"PostGIS write failed for gmb_stops ({e}); falling back to regular SQL table")
+        _write_spatial_table_as_sql(stops_gdf, 'gmb_stops', engine)
     if not silent:
         print(f"Loaded {len(stops_gdf)} records into spatial table 'gmb_stops'.")
 
@@ -252,7 +298,12 @@ def process_and_load_mtrbus_data(raw_routes: list, raw_stops: list, raw_route_st
         crs="EPSG:4326"
     )
     stops_gdf = stops_gdf.drop(columns=['lat', 'long'])
-    stops_gdf.to_postgis('mtrbus_stops', engine, if_exists='replace', index=False)
+    try:
+        stops_gdf.to_postgis('mtrbus_stops', engine, if_exists='replace', index=False)
+    except Exception as e:
+        if not silent:
+            print(f"PostGIS write failed for mtrbus_stops ({e}); falling back to regular SQL table")
+        _write_spatial_table_as_sql(stops_gdf, 'mtrbus_stops', engine)
     if not silent:
         print(f"Loaded {len(stops_gdf)} records into spatial table 'mtrbus_stops'.")
 
@@ -469,7 +520,12 @@ def process_and_load_citybus_data(raw_routes: list, raw_stop_details: list, raw_
         crs="EPSG:4326"
     )
     stops_gdf = stops_gdf.drop(columns=['lat', 'long'])
-    stops_gdf.to_postgis('citybus_stops', engine, if_exists='replace', index=False)
+    try:
+        stops_gdf.to_postgis('citybus_stops', engine, if_exists='replace', index=False)
+    except Exception as e:
+        if not silent:
+            print(f"PostGIS write failed for citybus_stops ({e}); falling back to regular SQL table")
+        _write_spatial_table_as_sql(stops_gdf, 'citybus_stops', engine)
     if not silent:
         print(f"Loaded {len(stops_gdf)} records into spatial table 'citybus_stops'.")
 
@@ -496,7 +552,12 @@ def process_and_load_nlb_data(raw_routes: list, raw_stops: list, raw_route_stops
         crs="EPSG:4326"
     )
     stops_gdf = stops_gdf.drop(columns=['latitude', 'longitude'])
-    stops_gdf.to_postgis('nlb_stops', engine, if_exists='replace', index=False)
+    try:
+        stops_gdf.to_postgis('nlb_stops', engine, if_exists='replace', index=False)
+    except Exception as e:
+        if not silent:
+            print(f"PostGIS write failed for nlb_stops ({e}); falling back to regular SQL table")
+        _write_spatial_table_as_sql(stops_gdf, 'nlb_stops', engine)
     if not silent:
         print(f"Loaded {len(stops_gdf)} records into spatial table 'nlb_stops'.")
 
@@ -515,7 +576,20 @@ def process_and_load_gov_gtfs_data(raw_frequencies: list, raw_trips: list, raw_r
     """Process and load Government GTFS data into the database."""
     if not any([raw_frequencies, raw_trips, raw_routes, raw_calendar, raw_stops, raw_stop_times, raw_fare_attributes, raw_fare_rules]):
         if not silent:
-            print("All Government GTFS raw data lists are empty. Aborting Government GTFS data processing.")
+            print("All Government GTFS raw data lists are empty. Creating empty placeholder tables.")
+
+        placeholder_tables = {
+            'gov_gtfs_frequencies': pd.DataFrame(columns=['trip_id', 'start_time', 'end_time', 'headway_secs']),
+            'gov_gtfs_trips': pd.DataFrame(columns=['route_id', 'service_id', 'trip_id']),
+            'gov_gtfs_routes': pd.DataFrame(columns=['route_id', 'route_short_name', 'route_long_name', 'agency_id', 'route_type']),
+            'gov_gtfs_stops': pd.DataFrame(columns=['stop_id', 'stop_name', 'stop_lat', 'stop_lon']),
+            'gov_gtfs_stop_times': pd.DataFrame(columns=['trip_id', 'arrival_time', 'departure_time', 'stop_id', 'stop_sequence']),
+        }
+
+        for table_name, placeholder_df in placeholder_tables.items():
+            placeholder_df.to_sql(table_name, engine, if_exists='replace', index=False)
+        if not silent:
+            print("Created empty placeholder Government GTFS tables.")
         return
 
     if raw_frequencies:
@@ -553,7 +627,12 @@ def process_and_load_gov_gtfs_data(raw_frequencies: list, raw_trips: list, raw_r
                 geometry=gpd.points_from_xy(stops_df.stop_lon, stops_df.stop_lat),
                 crs="EPSG:4326"
             )
-            stops_gdf.to_postgis('gov_gtfs_stops', engine, if_exists='replace', index=False)
+            try:
+                stops_gdf.to_postgis('gov_gtfs_stops', engine, if_exists='replace', index=False)
+            except Exception as e:
+                if not silent:
+                    print(f"PostGIS write failed for gov_gtfs_stops ({e}); falling back to regular SQL table")
+                _write_spatial_table_as_sql(stops_gdf, 'gov_gtfs_stops', engine)
         else:
             stops_df.to_sql('gov_gtfs_stops', engine, if_exists='replace', index=False)
         if not silent:
@@ -726,20 +805,44 @@ def process_and_load_mtr_rails_data(
             print("Processing MTR lines and stations...")
 
         stations_df = pd.DataFrame(raw_mtr_lines_and_stations)
-        # Drop rows where location data could not be fetched
-        stations_df.dropna(subset=['longitude', 'latitude'], inplace=True)
 
-        # Create a GeoDataFrame to add the geometry column
-        stations_gdf = gpd.GeoDataFrame(
-            stations_df,
-            geometry=gpd.points_from_xy(stations_df.longitude, stations_df.latitude),
-            crs="EPSG:4326"
-        )
-        stations_gdf.drop(columns=['latitude', 'longitude'], inplace=True)
+        # Keep stations even when geocoding failed so MTR rail routes/trips can
+        # still be exported. Missing coords become null geometry / null lat-lon.
+        lat_series = pd.to_numeric(stations_df.get('latitude'), errors='coerce')
+        lon_series = pd.to_numeric(stations_df.get('longitude'), errors='coerce')
+        has_coords = lat_series.notna() & lon_series.notna()
 
-        stations_gdf.to_postgis('mtr_lines_and_stations', engine, if_exists='replace', index=False)
+        from shapely.geometry import Point
+        geometries = [
+            Point(float(lon), float(lat)) if ok else None
+            for ok, lat, lon in zip(has_coords, lat_series, lon_series)
+        ]
+        stations_gdf = gpd.GeoDataFrame(stations_df, geometry=geometries, crs="EPSG:4326")
+        # Preserve lat/lon columns for non-PostGIS fallback readers.
+        stations_gdf['latitude'] = lat_series
+        stations_gdf['longitude'] = lon_series
+        # Also expose lat/lon names used by _write_spatial_table_as_sql / _read_spatial_table
+        stations_gdf['lat'] = lat_series
+        stations_gdf['lon'] = lon_series
+
+        try:
+            # PostGIS cannot store null geometries easily in some versions; drop
+            # null-geometry rows only for the PostGIS write path.
+            postgis_gdf = stations_gdf[stations_gdf.geometry.notna()].copy()
+            if postgis_gdf.empty:
+                raise RuntimeError("No geocoded MTR stations available for PostGIS write")
+            postgis_gdf = postgis_gdf.drop(columns=[c for c in ['latitude', 'longitude', 'lat', 'lon'] if c in postgis_gdf.columns], errors='ignore')
+            postgis_gdf.to_postgis('mtr_lines_and_stations', engine, if_exists='replace', index=False)
+            # If PostGIS only got geocoded rows, still write full table via SQL so
+            # ungeocoded stations are not lost.
+            if len(postgis_gdf) < len(stations_gdf):
+                _write_spatial_table_as_sql(stations_gdf, 'mtr_lines_and_stations', engine)
+        except Exception as e:
+            if not silent:
+                print(f"PostGIS write failed for mtr_lines_and_stations ({e}); falling back to regular SQL table")
+            _write_spatial_table_as_sql(stations_gdf, 'mtr_lines_and_stations', engine)
         if not silent:
-            print(f"Loaded {len(stations_gdf)} records into 'mtr_lines_and_stations' table.")
+            print(f"Loaded {len(stations_gdf)} records into 'mtr_lines_and_stations' table ({int(has_coords.sum())} with coordinates).")
 
     # --- MTR Heavy Rail Fares ---
     if raw_mtr_lines_fares:
@@ -841,8 +944,13 @@ def process_and_load_mtr_exits_data(raw_mtr_exits_data: list, engine: Engine, si
     )
     exits_gdf = exits_gdf.drop(columns=['lat', 'lon'])
 
-    # Save to PostGIS
-    exits_gdf.to_postgis('mtr_exits', engine, if_exists='replace', index=False)
+    # Save to PostGIS, or to a regular SQL table if PostGIS is unavailable
+    try:
+        exits_gdf.to_postgis('mtr_exits', engine, if_exists='replace', index=False)
+    except Exception as e:
+        if not silent:
+            print(f"PostGIS write failed for mtr_exits ({e}); falling back to regular SQL table")
+        _write_spatial_table_as_sql(exits_gdf, 'mtr_exits', engine)
 
     if not silent:
         print(f"Loaded {len(exits_gdf)} records into spatial table 'mtr_exits'.")
@@ -866,7 +974,12 @@ def process_and_load_light_rail_stops_data(raw_light_rail_stops: dict, engine: E
     )
     stops_gdf.drop(columns=['lat', 'lon'], inplace=True)
 
-    stops_gdf.to_postgis('light_rail_stops', engine, if_exists='replace', index=False)
+    try:
+        stops_gdf.to_postgis('light_rail_stops', engine, if_exists='replace', index=False)
+    except Exception as e:
+        if not silent:
+            print(f"PostGIS write failed for light_rail_stops ({e}); falling back to regular SQL table")
+        _write_spatial_table_as_sql(stops_gdf, 'light_rail_stops', engine)
 
     if not silent:
         print(f"Loaded {len(stops_gdf)} records into spatial table 'light_rail_stops'.")
