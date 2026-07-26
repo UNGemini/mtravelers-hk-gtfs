@@ -14,6 +14,9 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
     timeout-minutes: 360
 
     # App expects PostgreSQL (PostGIS preferred). SQLite is not supported for
@@ -142,7 +145,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           projectName: hk-routing-data
           directory: public
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          gitHubToken: ''
 
       # Always last: upload whatever main.py managed to download before failing.
       - name: Save mtravelers data cache
