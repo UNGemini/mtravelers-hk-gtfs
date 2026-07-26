@@ -16,7 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      deployments: write
     timeout-minutes: 360
 
     # App expects PostgreSQL (PostGIS preferred). SQLite is not supported for
@@ -130,7 +129,7 @@ jobs:
             Access-Control-Allow-Origin: *
           EOF
 
-      - name: Upload GTFS artifact
+      - name: Upload GTFS artifact to GitHub Actions
         uses: actions/upload-artifact@v4
         with:
           name: hk.gtfs.zip
@@ -138,14 +137,18 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+      - name: Configure AWS CLI for Cloudflare R2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: hk-routing-data
-          directory: public
-          gitHubToken: ''
+          aws-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          aws-region: auto
+
+      - name: Sync Public Directory to Cloudflare R2
+        run: |
+          aws s3 sync public/ s3://hk-routing-data/ \
+            --endpoint-url https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+            --delete
 
       # Always last: upload whatever main.py managed to download before failing.
       - name: Save mtravelers data cache
