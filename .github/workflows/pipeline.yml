@@ -107,9 +107,16 @@ jobs:
       - name: Fetch Latest HK PMTiles Map Data
         continue-on-error: true
         run: |
+          mkdir -p public
           wget -q --show-progress \
-            https://github.com/wheelstransit/hk-pmtiles-generation/releases/latest/download/hongkong.pmtiles \
+            https://github.com/UNGemini/hk-pmtiles-generation/releases/latest/download/hongkong.pmtiles \
             -O public/hongkong.pmtiles
+
+      - name: Verify PMTiles File
+        run: |
+          if [ ! -f public/hongkong.pmtiles ]; then
+            echo "Warning: hongkong.pmtiles missing, using fallback vector data if available."
+          fi
 
       - name: Generate Security Headers
         run: |
