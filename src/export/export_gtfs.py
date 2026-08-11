@@ -1060,6 +1060,8 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
         {'agency_id': 'PT', 'agency_name': 'Peak Tram', 'agency_url': 'https://thepeak.com.hk', 'agency_timezone': 'Asia/Hong_Kong', 'agency_lang': 'en'},
         {'agency_id': 'TRAM', 'agency_name': 'Tramways', 'agency_url': 'https://www.hktramways.com', 'agency_timezone': 'Asia/Hong_Kong', 'agency_lang': 'en'},
         {'agency_id': 'FERRY', 'agency_name': 'Ferry Services', 'agency_url': 'https://www.td.gov.hk', 'agency_timezone': 'Asia/Hong_Kong', 'agency_lang': 'en'},
+        {'agency_id': 'DB', 'agency_name': 'Discovery Bay Transport Services', 'agency_url': 'https://www.discoverybay.com.hk', 'agency_timezone': 'Asia/Hong_Kong', 'agency_lang': 'en'},
+        {'agency_id': 'PI', 'agency_name': 'Park Island Transport', 'agency_url': 'https://www.pitcl.com.hk', 'agency_timezone': 'Asia/Hong_Kong', 'agency_lang': 'en'},
     ]
     # we have zh-hant translations, check the end
     agency_df = pd.DataFrame(agencies)
@@ -1230,6 +1232,111 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
     if not silent:
         print(f"Loaded {len(ferry_routes_df)} ferry routes, {len(ferry_trips_df)} trips, {len(ferry_stops_df)} stops")
 
+    # -- Residents' Bus Services (NR / DB routes, TD headway feed) --
+    # Operators: PI (Park Island), DB (Discovery Bay) and CTB-operated NR61/NR88.
+    # Every feed trip is a real departure: trips with frequency rows keep the
+    # operator-published windows from the feed; the rest (e.g. NR338 overnight)
+    # are exported as plain scheduled departures. route_color matches the app's
+    # RBS teal so trip-plan legs render with the same brand colour.
+    if not silent:
+        print("Processing RBS routes from government GTFS...")
+
+    rbs_routes_df = pd.read_sql("""
+        SELECT route_id, route_short_name, route_long_name, agency_id, route_type
+        FROM gov_gtfs_routes
+        WHERE agency_id IN ('PI', 'DB')
+           OR route_short_name ~ '^(NR|DB)[0-9]'
+    """, engine)
+
+    rbs_trips_df = pd.read_sql("""
+        SELECT gt.route_id, gt.service_id, gt.trip_id
+        FROM gov_gtfs_trips gt
+        WHERE gt.route_id IN (
+            SELECT route_id FROM gov_gtfs_routes
+            WHERE agency_id IN ('PI', 'DB')
+               OR route_short_name ~ '^(NR|DB)[0-9]'
+        )
+    """, engine)
+
+    rbs_raw_trip_ids = rbs_trips_df['trip_id'].tolist()
+
+    # Government trip ids encode direction as the 2nd segment: 1=outbound, 2=inbound.
+    try:
+        parsed_rbs_direction = rbs_trips_df['trip_id'].str.split('-').str[1].astype(int)
+        rbs_trips_df['direction_id'] = (parsed_rbs_direction == 2).astype(int)
+    except (IndexError, ValueError, TypeError):
+        rbs_trips_df['direction_id'] = 0
+
+    rbs_trips_df = rbs_trips_df.merge(
+        rbs_routes_df[['route_id', 'agency_id', 'route_short_name']],
+        on='route_id',
+        how='left'
+    )
+
+    # Prefix trip/service ids to avoid conflicts with the rest of the feed.
+    rbs_trips_df['route_id'] = 'RBS-' + rbs_trips_df['route_id'].astype(str)
+    rbs_trips_df['trip_id'] = 'RBS-' + rbs_trips_df['trip_id'].astype(str)
+    rbs_trips_df['service_id'] = 'RBS-' + rbs_trips_df['service_id'].astype(str)
+
+    rbs_stoptimes_df = pd.read_sql("""
+        SELECT gst.trip_id, gst.arrival_time, gst.departure_time, gst.stop_id,
+               gst.stop_sequence
+        FROM gov_gtfs_stop_times gst
+        WHERE gst.trip_id IN (
+            SELECT trip_id FROM gov_gtfs_trips WHERE route_id IN (
+                SELECT route_id FROM gov_gtfs_routes
+                WHERE agency_id IN ('PI', 'DB')
+                   OR route_short_name ~ '^(NR|DB)[0-9]'
+            )
+        )
+    """, engine)
+
+    rbs_stoptimes_df['trip_id'] = 'RBS-' + rbs_stoptimes_df['trip_id'].astype(str)
+    rbs_stoptimes_df['stop_id'] = 'RBS-' + rbs_stoptimes_df['stop_id'].astype(str)
+
+    rbs_stops_df = pd.read_sql("""
+        SELECT DISTINCT gs.stop_id, gs.stop_name, gs.stop_lat, gs.stop_lon
+        FROM gov_gtfs_stops gs
+        WHERE gs.stop_id IN (
+            SELECT DISTINCT gst.stop_id FROM gov_gtfs_stop_times gst
+            WHERE gst.trip_id IN (
+                SELECT trip_id FROM gov_gtfs_trips WHERE route_id IN (
+                    SELECT route_id FROM gov_gtfs_routes
+                    WHERE agency_id IN ('PI', 'DB')
+                       OR route_short_name ~ '^(NR|DB)[0-9]'
+                )
+            )
+        )
+    """, engine)
+
+    if not rbs_stops_df.empty:
+        rbs_stops_df['stop_id'] = 'RBS-' + rbs_stops_df['stop_id'].astype(str)
+        rbs_stops_df['location_type'] = 0
+        rbs_stops_df['parent_station'] = None
+    else:
+        # Create empty dataframe with required columns if no RBS stops
+        rbs_stops_df = pd.DataFrame(columns=['stop_id', 'stop_name', 'stop_lat', 'stop_lon', 'location_type', 'parent_station'])
+
+    rbs_frequencies_df = pd.DataFrame(columns=['trip_id', 'start_time', 'end_time', 'headway_secs'])
+    if rbs_raw_trip_ids:
+        rbs_qids = "','".join(str(t) for t in rbs_raw_trip_ids)
+        rbs_frequencies_df = pd.read_sql(f"""
+            SELECT trip_id, start_time, end_time, headway_secs
+            FROM gov_gtfs_frequencies
+            WHERE trip_id IN ('{rbs_qids}')
+        """, engine)
+        if not rbs_frequencies_df.empty:
+            rbs_frequencies_df['trip_id'] = 'RBS-' + rbs_frequencies_df['trip_id'].astype(str)
+
+    # Prepare final RBS routes (teal brand, same palette as the app's RBS colour).
+    final_rbs_routes = rbs_routes_df.copy()
+    final_rbs_routes['route_id'] = 'RBS-' + final_rbs_routes['route_id'].astype(str)
+    final_rbs_routes['route_color'] = '#0F766E'
+    final_rbs_routes['route_text_color'] = '#FFFFFF'
+
+    if not silent:
+        print(f"Loaded {len(rbs_routes_df)} RBS routes, {len(rbs_trips_df)} trips, {len(rbs_stops_df)} stops, {len(rbs_stoptimes_df)} stop_times, {len(rbs_frequencies_df)} frequency patterns")
+
     if not silent:
         print("Building stops.txt...")
 
@@ -1398,6 +1505,7 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
         mtrbus_stops_final,
         nlb_stops_final,
         ferry_stops_df[['stop_id', 'stop_name', 'stop_lat', 'stop_lon', 'location_type', 'parent_station']],
+        rbs_stops_df[['stop_id', 'stop_name', 'stop_lat', 'stop_lon', 'location_type', 'parent_station']],
         mtr_stations_df[['stop_id', 'stop_name', 'stop_lat', 'stop_lon', 'location_type', 'parent_station']],        # include platform_code for platforms so it reaches stops.txt
         real_platforms_df[['stop_id', 'stop_name', 'stop_lat', 'stop_lon', 'location_type', 'parent_station', 'platform_code']],
         mtr_entrances_df,
@@ -2606,7 +2714,7 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
     # --- Combine & Standardize--
     if not silent:
         print("Combining and standardizing data for final GTFS files...")
-    final_routes_df = pd.concat([final_kmb_routes, final_ctb_routes, final_gmb_routes, final_mtrbus_routes, final_nlb_routes, final_ferry_routes, mtr_routes_df, lr_routes_df], ignore_index=True)
+    final_routes_df = pd.concat([final_kmb_routes, final_ctb_routes, final_gmb_routes, final_mtrbus_routes, final_nlb_routes, final_ferry_routes, final_rbs_routes, mtr_routes_df, lr_routes_df], ignore_index=True)
     color_map = {'KMB': 'EE171F', 'CTB': '0053B9', 'NLB': '8AB666', 'MTRB': 'AE2A42', 'GMB': '34C759', 'MTRR': '003DA5', 'LR': 'FF8800', 'FERRY': '0099CC'}
     
     def get_route_color(agency_id):
@@ -2641,6 +2749,11 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
                     final_routes_df['route_id'].isin(lr_text_lookup.index),
                     'route_text_color'
                 ] = final_routes_df['route_id'].map(lr_text_lookup)
+    # RBS teal brand (Residents' Bus Services) — keep route_color consistent
+    # with the app's RBS palette regardless of the underlying agency id.
+    rbs_route_ids = final_rbs_routes['route_id'].astype(str)
+    final_routes_df.loc[final_routes_df['route_id'].isin(rbs_route_ids), 'route_color'] = '#0F766E'
+    final_routes_df.loc[final_routes_df['route_id'].isin(rbs_route_ids), 'route_text_color'] = '#FFFFFF'
     final_routes_df['network_id'] = final_routes_df['route_id'].astype(str)
 
     routes_output_cols = [
@@ -2658,7 +2771,7 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
             final_routes_df[col] = None
     final_routes_output_df = final_routes_df[routes_output_cols]
 
-    all_trips_df = pd.concat([kmb_trips_df, ctb_trips_df, gmb_trips_df, mtrbus_trips_df, nlb_trips_df, ferry_trips_df, mtr_trips_df, lr_trips_df], ignore_index=True)
+    all_trips_df = pd.concat([kmb_trips_df, ctb_trips_df, gmb_trips_df, mtrbus_trips_df, nlb_trips_df, ferry_trips_df, rbs_trips_df, mtr_trips_df, lr_trips_df], ignore_index=True)
 
     # --- Check for flipped co-op routes ---
     if not silent:
@@ -2904,6 +3017,12 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
         if not silent:
             print(f"Added {len(ferry_frequencies_df)} ferry frequency patterns")
 
+    # --- RBS Frequencies ---
+    if not rbs_frequencies_df.empty:
+        final_frequencies_df = pd.concat([final_frequencies_df, rbs_frequencies_df], ignore_index=True)
+        if not silent:
+            print(f"Added {len(rbs_frequencies_df)} RBS frequency patterns")
+
     # --- MTR/LR Frequencies ---
     try:
         # Remove any pre-existing MTR/LR frequencies from government feed (they don't apply to our synthetic rail trips)
@@ -3024,7 +3143,7 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
     final_nlb_stoptimes = nlb_stoptimes_df.rename(columns={'sequence': 'stop_sequence'})
     final_mtr_stoptimes = mtr_stoptimes_df
     final_lr_stoptimes = lr_stoptimes_df
-    final_stop_times_df = pd.concat([final_kmb_stoptimes, final_ctb_stoptimes, final_gmb_stoptimes, final_mtrbus_stoptimes, final_nlb_stoptimes, ferry_stoptimes_df, final_mtr_stoptimes, final_lr_stoptimes], ignore_index=True)
+    final_stop_times_df = pd.concat([final_kmb_stoptimes, final_ctb_stoptimes, final_gmb_stoptimes, final_mtrbus_stoptimes, final_nlb_stoptimes, ferry_stoptimes_df, rbs_stoptimes_df, final_mtr_stoptimes, final_lr_stoptimes], ignore_index=True)
     final_stop_times_df['stop_id'] = final_stop_times_df['stop_id'].replace(master_duplicates_map)
 
     final_stop_times_output_df = final_stop_times_df[stop_times_cols].copy()
