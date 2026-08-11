@@ -106,6 +106,52 @@ jobs:
             echo "Dense compiler not present at compiler/gtfs-dense-compiler; skipping."
           fi
 
+      # ── Build routing graph (.wheelsrouter) from the fresh GTFS ─────────
+      # The trip-planning app (MorganTraveler) loads hk.wheelsrouter(.gz)
+      # from this same R2 bucket. Build it from the GTFS produced by this
+      # run so the graph always matches the feed just published.
+      - name: Checkout local-router (pipeline-rs)
+        uses: actions/checkout@v4
+        with:
+          repository: UNGemini/local-router
+          ref: ${{ vars.LOCAL_ROUTER_REF || 'main' }}
+          path: local-router
+          fetch-depth: 1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: local-router
+
+      - name: Build pipeline binary
+        working-directory: local-router
+        run: cargo build --release -p pipeline-rs
+
+      - name: Build routing graph
+        env:
+          PIPELINE: local-router/target/release/pipeline
+        run: |
+          set -euo pipefail
+          "${PIPELINE}" --gtfs output/hk.gtfs.zip -o public/hk.wheelsrouter
+          gzip -k -f public/hk.wheelsrouter
+          ls -lah public/hk.wheelsrouter public/hk.wheelsrouter.gz
+
+      # Smoke test — Residents' services (NR/DB) must survive the build; the
+      # app depends on them. The graph is a string-interning binary, so grep
+      # needs -a. Failing here aborts the job before R2 sync, keeping the
+      # last good graph published.
+      - name: Smoke-test graph for RBS routes
+        run: |
+          set -euo pipefail
+          if ! grep -aq "NR332" public/hk.wheelsrouter; then
+            echo "::error::NR332 not found in built graph — RBS trips missing from GTFS?" >&2
+            exit 1
+          fi
+          echo "NR332 present in graph ✓"
+
       - name: Fetch Latest HK PMTiles Map Data
         continue-on-error: true
         run: |
@@ -146,6 +192,21 @@ jobs:
           aws s3 sync public/ s3://hk-routing-data/ \
             --endpoint-url https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com \
             --delete
+
+      # Graph files get long cache headers so the CDN edge serves the
+      # weekly build for a day and revalidates for a week beyond that.
+      - name: Set graph cache headers on R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          set -euo pipefail
+          for f in hk.wheelsrouter hk.wheelsrouter.gz; do
+            aws s3 cp "public/${f}" "s3://hk-routing-data/${f}" \
+              --endpoint-url https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+              --cache-control "public, max-age=86400, stale-while-revalidate=604800"
+          done
 
       # Always last: upload whatever main.py managed to download before failing.
       - name: Save mtravelers data cache
