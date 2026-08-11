@@ -56,6 +56,7 @@ jobs:
             libgeos-dev \
             libproj-dev \
             libspatialindex-dev \
+            capnproto \
             wget \
             zip
 
