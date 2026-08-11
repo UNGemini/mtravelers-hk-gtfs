@@ -1290,6 +1290,21 @@ def export_unified_feed(engine: Engine, output_dir: str, journey_time_data: dict
             )
         )
     """, engine)
+    # The TD feed only times timepoint stops for NR/DB trips — every other
+    # stop has blank arrival/departure. Interpolate per trip (linear over the
+    # sorted stop sequence, between the timed anchors) so intermediate stops
+    # stay boardable/alightable in the routing graph.
+    rbs_stoptimes_df = rbs_stoptimes_df.sort_values(
+        ['trip_id', 'stop_sequence']
+    ).copy()
+    for col in ('arrival_time', 'departure_time'):
+        secs = pd.to_numeric(rbs_stoptimes_df[col].apply(_hhmmss_to_seconds))
+        filled = secs.groupby(rbs_stoptimes_df['trip_id']).transform(
+            lambda s: s.interpolate(limit_direction='both')
+        )
+        rbs_stoptimes_df[col] = filled.apply(
+            lambda v: _seconds_to_hhmmss(int(round(v))) if pd.notna(v) else ''
+        )
 
     rbs_stoptimes_df['trip_id'] = 'RBS-' + rbs_stoptimes_df['trip_id'].astype(str)
     rbs_stoptimes_df['stop_id'] = 'RBS-' + rbs_stoptimes_df['stop_id'].astype(str)
