@@ -5,6 +5,12 @@ on:
     # Weekly run: Sunday 03:00 HKT (Saturday 19:00 UTC)
     - cron: '0 19 * * 0'
   workflow_dispatch:
+    inputs:
+      ignore_cache:
+        description: "Re-scrape all sources - skip .cache / waypoints restore (pick up new routes like LRT 610P)"
+        required: false
+        type: boolean
+        default: false
 
 # Avoid overlapping scheduled/manual runs on the same branch.
 concurrency:
@@ -67,6 +73,7 @@ jobs:
       # and does not persist on job failure. restore + save with if: always()
       # keeps partial .cache / waypoints after mid-run crashes (gov rate limits).
       - name: Restore mtravelers data cache
+        if: ${{ inputs.ignore_cache != true }}
         id: cache-restore
         uses: actions/cache/restore@v4
         with:
