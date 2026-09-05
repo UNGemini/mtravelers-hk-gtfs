@@ -57,8 +57,14 @@ def fetch_or_load_from_cache(cache_key, fetch_func, force_ingest=False, force_in
         data = asyncio.run(fetch_func(*args, **kwargs))
     else:
         data = fetch_func(*args, **kwargs)
-    with open(cache_file, 'wb') as f:
-        pickle.dump(data, f)
+    # Never persist empty results: a transient API failure must not poison
+    # the cache — the next run re-fetches this key while the rest of the
+    # partial cache keeps the run resumable.
+    if data:
+        with open(cache_file, 'wb') as f:
+            pickle.dump(data, f)
+    else:
+        print(f"  {cache_key}: fetch returned no data - NOT cached")
     return data
 
 def main():
@@ -94,6 +100,15 @@ def main():
     raw_kmb_route_stops = fetch_or_load_from_cache("kmb_route_stops", kmb_client.fetch_all_route_stops, args.force_ingest, silent=args.silent)
     if not args.silent:
         print(f"kmb data - routes: {len(raw_kmb_routes) if raw_kmb_routes else 0}, stops: {len(raw_kmb_stops) if raw_kmb_stops else 0}, route-stops: {len(raw_kmb_route_stops) if raw_kmb_route_stops else 0}")
+
+    # KMB is the largest operator in the feed - a missing scrape has to fail
+    # the run here with a clear cause instead of crashing the export later
+    # (or silently publishing a GTFS without KMB).
+    if not (raw_kmb_routes and raw_kmb_stops and raw_kmb_route_stops):
+        raise SystemExit(
+            "KMB scrape returned no data (API outage or rate limit). "
+            "Re-run the workflow; the empty result was not cached."
+        )
 
     # gov gtfs
     raw_gov_frequencies = fetch_or_load_from_cache("gov_frequencies", gov_gtfs_client.fetch_frequencies_data, args.force_ingest, force_ingest_gov_gtfs=args.force_ingest_gov_gtfs, silent=args.silent)
