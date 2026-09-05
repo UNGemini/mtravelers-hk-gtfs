@@ -131,12 +131,22 @@ jobs:
         working-directory: local-router
         run: cargo build --release -p pipeline-rs
 
+      # ── NEW: OSM street network for the local road engine ───────────────
+      # Same source hk-pmtiles-generation uses, so graph and basemap agree.
+      - name: Download HK OSM extract
+        run: |
+          mkdir -p output
+          wget -q --show-progress \
+            https://download.geofabrik.de/asia/china/hong-kong-latest.osm.pbf \
+            -O output/hong-kong.osm.pbf
+          ls -lah output/hong-kong.osm.pbf
+
       - name: Build routing graph
         env:
           PIPELINE: local-router/target/release/pipeline
         run: |
           set -euo pipefail
-          "${PIPELINE}" --gtfs output/hk.gtfs.zip -o public/hk.wheelsrouter
+          "${PIPELINE}" --gtfs output/hk.gtfs.zip --osm output/hong-kong.osm.pbf -o public/hk.wheelsrouter
           gzip -k -f public/hk.wheelsrouter
           ls -lah public/hk.wheelsrouter public/hk.wheelsrouter.gz
 
