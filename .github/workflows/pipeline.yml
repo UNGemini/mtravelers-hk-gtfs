@@ -140,26 +140,55 @@ jobs:
 
       # ── NEW: OSM street network for the local road engine ───────────────
       # Same source hk-pmtiles-generation uses, so graph and basemap agree.
+      # OSM street data changes slowly — cache the extract so Geofabrik
+      # outages (403/502 of datacenter IPs) can't block the graph build.
+      - name: Restore OSM extract cache
+        id: osm-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: output/hong-kong.osm.pbf
+          key: hk-osm-pbf-${{ github.run_id }}
+          restore-keys: |
+            hk-osm-pbf-
+
       - name: Download HK OSM extract
+        id: osm-download
         run: |
           set -euo pipefail
           mkdir -p output
-          # Geofabrik occasionally 403s datacenter IPs (wget exit 8) —
-          # retry, then fall back to the BBBike city extract.
-          if ! wget -q --tries=3 --timeout=60 \
-              https://download.geofabrik.de/asia/china/hong-kong-latest.osm.pbf \
-              -O output/hong-kong.osm.pbf; then
-            echo "Geofabrik download failed - falling back to BBBike"
-            wget -q --tries=3 --timeout=120 \
-              https://download.bbbike.org/osm/bbbike/HongKong/HongKong.osm.pbf \
-              -O output/hong-kong.osm.pbf
+          size=0
+          if [ -f output/hong-kong.osm.pbf ]; then
+            size=$(stat -c%s output/hong-kong.osm.pbf)
           fi
-          ls -lah output/hong-kong.osm.pbf
-          # sanity: a real HK extract is tens of MB
+          if [ "$size" -gt 5000000 ]; then
+            echo "Using cached OSM extract ($size bytes)"
+            exit 0
+          fi
+          tries=0
+          until wget -q --timeout=90 \
+              https://download.geofabrik.de/asia/china/hong-kong-latest.osm.pbf \
+              -O output/hong-kong.osm.pbf; do
+            tries=$((tries+1))
+            if [ "$tries" -ge 4 ]; then
+              echo "::error::Geofabrik unreachable after $tries attempts" >&2
+              exit 1
+            fi
+            echo "attempt $tries failed - retrying in 30s"
+            sleep 30
+          done
           test "$(stat -c%s output/hong-kong.osm.pbf)" -gt 5000000 || {
             echo "::error::OSM extract too small - download failed" >&2
             exit 1
           }
+          ls -lah output/hong-kong.osm.pbf
+          echo "downloaded=true" >> "$GITHUB_OUTPUT"
+
+      - name: Save OSM extract cache
+        if: steps.osm-download.outputs.downloaded == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: output/hong-kong.osm.pbf
+          key: hk-osm-pbf-${{ github.run_id }}
 
       - name: Build routing graph
         env:
