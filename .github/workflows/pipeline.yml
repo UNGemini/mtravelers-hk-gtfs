@@ -142,11 +142,24 @@ jobs:
       # Same source hk-pmtiles-generation uses, so graph and basemap agree.
       - name: Download HK OSM extract
         run: |
+          set -euo pipefail
           mkdir -p output
-          wget -q --show-progress \
-            https://download.geofabrik.de/asia/china/hong-kong-latest.osm.pbf \
-            -O output/hong-kong.osm.pbf
+          # Geofabrik occasionally 403s datacenter IPs (wget exit 8) —
+          # retry, then fall back to the BBBike city extract.
+          if ! wget -q --tries=3 --timeout=60 \
+              https://download.geofabrik.de/asia/china/hong-kong-latest.osm.pbf \
+              -O output/hong-kong.osm.pbf; then
+            echo "Geofabrik download failed - falling back to BBBike"
+            wget -q --tries=3 --timeout=120 \
+              https://download.bbbike.org/osm/bbbike/HongKong/HongKong.osm.pbf \
+              -O output/hong-kong.osm.pbf
+          fi
           ls -lah output/hong-kong.osm.pbf
+          # sanity: a real HK extract is tens of MB
+          test "$(stat -c%s output/hong-kong.osm.pbf)" -gt 5000000 || {
+            echo "::error::OSM extract too small - download failed" >&2
+            exit 1
+          }
 
       - name: Build routing graph
         env:
